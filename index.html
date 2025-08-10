@@ -1,23 +1,19 @@
 <!DOCTYPE html>
+
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>TimeCure 财务额度看板（Supabase 版）</title>
-
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-
-  <!-- SheetJS -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
-
-  <!-- Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TimeCure 财务额度看板（Supabase 版）</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<!-- SheetJS -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
     body { background: #f0f2f5; color:#333; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
     .container { max-width: 1600px; }
     .dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; margin: 25px 0; }
@@ -44,79 +40,73 @@
     .btn-close-white { filter: invert(1) grayscale(100%) brightness(200%); }
   </style>
 </head>
-<body>
+<body><div id="connection-status" style="padding:8px; background:#eee; color:#333; font-size:14px;">正在连接 Supabase...</div>
 <div class="container py-4">
-  <div id="main-view">
-    <h1 class="dashboard-title">客户额度总览</h1>
-    <div class="action-bar">
-      <button class="btn btn-primary" id="addRecordBtn">添加消费记录</button>
-      <button class="btn btn-outline-secondary" id="importBtn">导入数据</button>
-      <button class="btn btn-outline-secondary" id="exportBtn">导出数据</button>
-      <input type="file" id="importFile" accept=".json" style="display:none;">
-    </div>
-    <div class="dashboard" id="dashboard"></div>
-  </div>
-
-  <div id="detail-view" style="display:none;">
-    <h1 id="detail-title" class="dashboard-title"></h1>
-    <div class="action-bar">
-      <button class="btn btn-secondary" id="backToDashboardBtn">返回总览</button>
-      <button class="btn btn-outline-primary" id="exportClientBtn">导出JSON</button>
-      <button class="btn btn-success" id="exportExcelBtn">导出Excel</button>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-striped table-hover align-middle">
-        <thead class="table-dark">
-          <tr><th>日期</th><th>分类</th><th>项目</th><th>供应商</th><th>数量</th><th>单价</th><th>总额</th><th>备注</th><th>操作</th></tr>
-        </thead>
-        <tbody id="clientCostTableBody"></tbody>
-      </table>
-    </div>
-  </div>
+<div id="main-view">
+<h1 class="dashboard-title">客户额度总览</h1>
+<div class="action-bar">
+<button class="btn btn-primary" id="addRecordBtn">添加消费记录</button>
+<button class="btn btn-outline-secondary" id="importBtn">导入数据</button>
+<button class="btn btn-outline-secondary" id="exportBtn">导出数据</button>
+<input accept=".json" id="importFile" style="display:none;" type="file"/>
 </div>
-
+<div class="dashboard" id="dashboard"></div>
+</div>
+<div id="detail-view" style="display:none;">
+<h1 class="dashboard-title" id="detail-title"></h1>
+<div class="action-bar">
+<button class="btn btn-secondary" id="backToDashboardBtn">返回总览</button>
+<button class="btn btn-outline-primary" id="exportClientBtn">导出JSON</button>
+<button class="btn btn-success" id="exportExcelBtn">导出Excel</button>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-hover align-middle">
+<thead class="table-dark">
+<tr><th>日期</th><th>分类</th><th>项目</th><th>供应商</th><th>数量</th><th>单价</th><th>总额</th><th>备注</th><th>操作</th></tr>
+</thead>
+<tbody id="clientCostTableBody"></tbody>
+</table>
+</div>
+</div>
+</div>
 <!-- 模态：添加/编辑记录 -->
 <div class="modal fade" id="recordModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
-  <div class="modal-header"><h5 class="modal-title" id="recordModalTitle">添加记录</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <form id="recordForm">
-      <input type="hidden" id="recordId">
-      <div class="row g-3">
-        <div class="col-md-6"><label class="form-label">日期</label><input type="date" class="form-control" id="recordDate" required></div>
-        <div class="col-md-6"><label class="form-label">客户</label><select class="form-select" id="recordClient" required></select></div>
-        <div class="col-md-6"><label class="form-label">分类</label><select class="form-select" id="recordCategory" required></select></div>
-        <div class="col-md-6"><label class="form-label">项目</label><input type="text" class="form-control" id="recordItemName" placeholder="例如：第一季度补充剂" required></div>
-        <div class="col-md-12"><label class="form-label">供应商</label><input type="text" class="form-control" id="recordSupplier"></div>
-        <div class="col-md-4"><label class="form-label">数量</label><input type="number" class="form-control" id="recordQuantity" min="0" value="1" required></div>
-        <div class="col-md-4"><label class="form-label">单价</label><input type="number" class="form-control" id="recordUnitPrice" min="0" step="0.01" required></div>
-        <div class="col-md-4"><label class="form-label">总额</label><input type="number" class="form-control" id="recordTotalAmount" min="0" step="0.01" required readonly></div>
-        <div class="col-md-12"><label class="form-label">备注</label><textarea class="form-control" id="recordNotes" rows="2"></textarea></div>
-      </div>
-    </form>
-  </div>
-  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-primary" id="saveRecordBtn">保存</button></div>
+<div class="modal-header"><h5 class="modal-title" id="recordModalTitle">添加记录</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body">
+<form id="recordForm">
+<input id="recordId" type="hidden"/>
+<div class="row g-3">
+<div class="col-md-6"><label class="form-label">日期</label><input class="form-control" id="recordDate" required="" type="date"/></div>
+<div class="col-md-6"><label class="form-label">客户</label><select class="form-select" id="recordClient" required=""></select></div>
+<div class="col-md-6"><label class="form-label">分类</label><select class="form-select" id="recordCategory" required=""></select></div>
+<div class="col-md-6"><label class="form-label">项目</label><input class="form-control" id="recordItemName" placeholder="例如：第一季度补充剂" required="" type="text"/></div>
+<div class="col-md-12"><label class="form-label">供应商</label><input class="form-control" id="recordSupplier" type="text"/></div>
+<div class="col-md-4"><label class="form-label">数量</label><input class="form-control" id="recordQuantity" min="0" required="" type="number" value="1"/></div>
+<div class="col-md-4"><label class="form-label">单价</label><input class="form-control" id="recordUnitPrice" min="0" required="" step="0.01" type="number"/></div>
+<div class="col-md-4"><label class="form-label">总额</label><input class="form-control" id="recordTotalAmount" min="0" readonly="" required="" step="0.01" type="number"/></div>
+<div class="col-md-12"><label class="form-label">备注</label><textarea class="form-control" id="recordNotes" rows="2"></textarea></div>
+</div>
+</form>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-primary" id="saveRecordBtn" type="button">保存</button></div>
 </div></div></div>
-
 <!-- 模态：新增客户 -->
 <div class="modal fade" id="addClientModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-  <div class="modal-header"><h5 class="modal-title">新增客户</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body">
-    <div class="mb-3"><label class="form-label">客户姓名</label><input type="text" class="form-control" id="newClientName" placeholder="例如：张三"></div>
-    <div class="mb-3"><label class="form-label">客户类型</label><select class="form-select" id="newClientType"><option value="基础版">基础版 (额度: 40,000)</option><option value="Pro版">Pro版 (额度: 120,000)</option><option value="特殊">特殊(手动输入额度)</option></select></div>
-    <div class="mb-3" id="manualQuotaWrapper" style="display:none;"><label class="form-label">总额度</label><input type="number" class="form-control" id="newClientQuota" min="0" placeholder="例如：150000"></div>
-  </div>
-  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-primary" id="saveNewClientBtn">保存客户</button></div>
+<div class="modal-header"><h5 class="modal-title">新增客户</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body">
+<div class="mb-3"><label class="form-label">客户姓名</label><input class="form-control" id="newClientName" placeholder="例如：张三" type="text"/></div>
+<div class="mb-3"><label class="form-label">客户类型</label><select class="form-select" id="newClientType"><option value="基础版">基础版 (额度: 40,000)</option><option value="Pro版">Pro版 (额度: 120,000)</option><option value="特殊">特殊(手动输入额度)</option></select></div>
+<div class="mb-3" id="manualQuotaWrapper" style="display:none;"><label class="form-label">总额度</label><input class="form-control" id="newClientQuota" min="0" placeholder="例如：150000" type="number"/></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-primary" id="saveNewClientBtn" type="button">保存客户</button></div>
 </div></div></div>
-
 <!-- 删除确认 -->
 <div class="modal fade" id="deleteConfirmModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-  <div class="modal-header"><h5 class="modal-title">确认删除</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
-  <div class="modal-body"><p>您确定要删除这条记录吗？此操作不可撤销。</p></div>
-  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button><button type="button" class="btn btn-danger" id="confirmDeleteBtn">确认删除</button></div>
+<div class="modal-header"><h5 class="modal-title">确认删除</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body"><p>您确定要删除这条记录吗？此操作不可撤销。</p></div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-danger" id="confirmDeleteBtn" type="button">确认删除</button></div>
 </div></div></div>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 /*
   注意：请在下面填入你的 Supabase 项目配置（两处）：
@@ -598,6 +588,27 @@ document.getElementById('importFile').onchange = async (e) => {
   renderAll();
 })();
 
+
+async function checkConnection() {
+  const statusEl = document.getElementById("connection-status");
+  try {
+    const { data, error } = await supabaseClient.from("clients").select("id").limit(1);
+    if (error) {
+      statusEl.textContent = "❌ 连接失败: " + error.message;
+      statusEl.style.background = "#f8d7da";
+      statusEl.style.color = "#721c24";
+    } else {
+      statusEl.textContent = "✅ 已连接 Supabase";
+      statusEl.style.background = "#d4edda";
+      statusEl.style.color = "#155724";
+    }
+  } catch (err) {
+    statusEl.textContent = "❌ 连接错误: " + err.message;
+    statusEl.style.background = "#f8d7da";
+    statusEl.style.color = "#721c24";
+  }
+}
+checkConnection();
 </script>
 </body>
 </html>
