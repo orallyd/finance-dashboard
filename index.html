@@ -40,7 +40,7 @@
     .btn-close-white { filter: invert(1) grayscale(100%) brightness(200%); }
   </style>
 </head>
-<body><div id="connection-status" style="padding:8px; background:#eee; color:#333; font-size:14px;">正在连接 Supabase...</div>
+<body><div id="debug-section" style="padding:10px; background:#f0f0f0; margin:10px 0;"><h3>匿名写入 cost_records 调试</h3><button id="debug-insert-btn" style="padding:6px 12px;">测试匿名插入</button><pre id="debug-result" style="background:#fff; padding:8px; margin-top:8px;"></pre></div>
 <div class="container py-4">
 <div id="main-view">
 <h1 class="dashboard-title">客户额度总览</h1>
@@ -589,26 +589,28 @@ document.getElementById('importFile').onchange = async (e) => {
 })();
 
 
-async function checkConnection() {
-  const statusEl = document.getElementById("connection-status");
+document.getElementById("debug-insert-btn").addEventListener("click", async () => {
+  const resultEl = document.getElementById("debug-result");
+  resultEl.textContent = "正在尝试插入测试数据...";
   try {
-    const { data, error } = await supabaseClient.from("clients").select("id").limit(1);
+    const insertData = {
+      // 这里需要替换为你的 cost_records 表必填字段
+      client_id: 1, // 假设1号客户存在
+      amount: 0,
+      created_at: new Date().toISOString()
+    };
+    const { data, error } = await supabaseClient
+      .from("cost_records")
+      .insert([insertData]);
     if (error) {
-      statusEl.textContent = "❌ 连接失败: " + error.message;
-      statusEl.style.background = "#f8d7da";
-      statusEl.style.color = "#721c24";
+      resultEl.textContent = "❌ 插入失败:\n" + JSON.stringify(error, null, 2);
     } else {
-      statusEl.textContent = "✅ 已连接 Supabase";
-      statusEl.style.background = "#d4edda";
-      statusEl.style.color = "#155724";
+      resultEl.textContent = "✅ 插入成功:\n" + JSON.stringify(data, null, 2);
     }
   } catch (err) {
-    statusEl.textContent = "❌ 连接错误: " + err.message;
-    statusEl.style.background = "#f8d7da";
-    statusEl.style.color = "#721c24";
+    resultEl.textContent = "❌ JS 异常:\n" + err.message;
   }
-}
-checkConnection();
+});
 </script>
 </body>
 </html>
