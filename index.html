@@ -41,6 +41,18 @@
   </style>
 </head>
 <body><div id="connection-status" style="padding:8px; background:#eee; color:#333; font-size:14px;">正在连接 Supabase...</div>
+
+<div id="debug-section" style="padding:10px; background:#f8f9fa; margin:10px 0; border-radius:8px;">
+  <h5 style="margin:0 0 8px 0;">🔧 匿名写入调试（Debug）</h5>
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+    <button id="debug-insert-btn" class="btn btn-sm btn-outline-primary">测试匿名插入（不含 client_id）</button>
+    <button id="debug-insert-client-btn" class="btn btn-sm btn-outline-secondary">插入客户并插入记录（自动）</button>
+    <button id="debug-clear-btn" class="btn btn-sm btn-outline-danger">清除 test 记录（仅 cost_records 中的测试条目）</button>
+    <span style="color:#666; font-size:13px;">（用于定位是否为外键 / RLS / key 问题）</span>
+  </div>
+  <pre id="debug-result" style="background:#fff; padding:8px; margin-top:8px; white-space:pre-wrap; max-height:220px; overflow:auto;"></pre>
+</div>
+
 <div class="container py-4">
 <div id="main-view">
 <h1 class="dashboard-title">客户额度总览</h1>
@@ -116,6 +128,71 @@
 const SUPABASE_URL = "https://wzoilujmllyrohnbsfgn.supabase.co"; // ← 替换
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6b2lsdWptbGx5cm9obmJzZmduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDExODQsImV4cCI6MjA3MDM3NzE4NH0.2hq4am66y1IFQa-7INmOBzoyXlfC7g6lO5ikCdkxi2g"; // ← 替换
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+
+// ===== Debug helpers for anonymous insert testing =====
+async function debugInsertNoClient() {
+  const resultEl = document.getElementById('debug-result');
+  resultEl.textContent = '正在尝试插入（不含 client_id）...';
+  try {
+    const insertData = {
+      date: new Date().toISOString().split('T')[0],
+      category: 'debug测试',
+      item_name: '匿名测试项目',
+      supplier: '调试',
+      quantity: 1,
+      unit_price: 1,
+      total_amount: 1,
+      notes: '匿名插入(不含client_id)',
+      created_at: new Date().toISOString()
+    };
+    const { data, error } = await supabaseClient.from('cost_records').insert([insertData]).select();
+    if (error) resultEl.textContent = '❌ 插入失败: ' + JSON.stringify(error, null, 2);
+    else resultEl.textContent = '✅ 插入成功: ' + JSON.stringify(data, null, 2);
+  } catch (err) {
+    resultEl.textContent = '❌ JS异常: ' + err.message;
+  }
+}
+
+async function debugInsertClientAndRecord() {
+  const resultEl = document.getElementById('debug-result');
+  resultEl.textContent = '正在插入客户并记录...';
+  try {
+    const newClient = { name: 'DEBUG 客户 ' + Date.now(), type: '测试', quota: 0, start_date: new Date().toISOString().slice(0,10) };
+    const { data: cdata, error: cerr } = await supabaseClient.from('clients').insert([newClient]).select().single();
+    if (cerr) { resultEl.textContent = '❌ 插入客户失败: ' + JSON.stringify(cerr, null, 2); return; }
+    const record = { client_id: cdata.id, date: new Date().toISOString().split('T')[0], category: 'debug', item_name: '插入记录', supplier: '调试', quantity: 1, unit_price: 1, total_amount: 1, notes: '来自debug' };
+    const { data: rdata, error: rerr } = await supabaseClient.from('cost_records').insert([record]).select().single();
+    if (rerr) { resultEl.textContent = '❌ 插入记录失败: ' + JSON.stringify(rerr, null, 2); return; }
+    resultEl.textContent = '✅ 成功: 客户 id=' + cdata.id + ' 记录 id=' + rdata.id;
+  } catch (err) {
+    resultEl.textContent = '❌ JS异常: ' + err.message;
+  }
+}
+
+async function debugClearTestRecords() {
+  const resultEl = document.getElementById('debug-result');
+  resultEl.textContent = '正在删除 cost_records 中的 debug 条目...';
+  try {
+    // 这里使用 notes 字段包含 "debug" 的作为测试记录标识（谨慎）
+    const { data, error } = await supabaseClient.from('cost_records').delete().like('notes', '%debug%');
+    if (error) resultEl.textContent = '❌ 删除失败: ' + JSON.stringify(error, null, 2);
+    else resultEl.textContent = '✅ 删除成功: ' + (data ? JSON.stringify(data, null, 2) : '无返回数据');
+  } catch (err) {
+    resultEl.textContent = '❌ JS异常: ' + err.message;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('debug-insert-btn');
+  if (btn) btn.addEventListener('click', debugInsertNoClient);
+  const btn2 = document.getElementById('debug-insert-client-btn');
+  if (btn2) btn2.addEventListener('click', debugInsertClientAndRecord);
+  const btn3 = document.getElementById('debug-clear-btn');
+  if (btn3) btn3.addEventListener('click', debugClearTestRecords);
+});
+// ===== end debug helpers =====
+
 
 // ===== 分类结构与颜色（保留你原来的） =====
 const CATEGORY_STRUCTURE = {
