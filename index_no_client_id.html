@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TimeCure 财务额度看板（Supabase 版）</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<!-- SheetJS -->
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<!-- Supabase -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+    body { background: #f0f2f5; color:#333; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; }
+    .container { max-width: 1600px; }
+    .dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 25px; margin: 25px 0; }
+    .client-card, .add-client-card { background:#fff; border-radius:16px; box-shadow:0 6px 20px rgba(0,0,0,0.07); padding:25px; display:flex; flex-direction:column; align-items:center; position:relative; transition:all .3s ease; border:1px solid #e8e8e8; }
+    .client-card:hover, .add-client-card:hover { box-shadow:0 8px 32px rgba(0,0,0,0.12); transform:translateY(-5px); }
+    .add-client-card { justify-content:center; font-size:70px; color:#a0a0a0; cursor:pointer; border:2.5px dashed #d9d9d9; background:#fafafa; min-height:450px; }
+    .add-client-card:hover { color:#0d6efd; border-color:#0d6efd; background:#f0f8ff; }
+    .client-pie { width:180px; height:180px; margin:20px 0; }
+    .pie-label-container { width:100%; text-align:center; margin-top:10px; min-height:50px; }
+    .pie-label { display:inline-block; font-size:13px; margin:0 8px 5px 0; padding:3px 8px; border-radius:12px; font-weight:500; color:#fff; }
+    .client-name { font-size:1.8rem; font-weight:700; color:#1a2747; margin-bottom:1rem; cursor:pointer; display:flex; align-items:center; gap:8px; }
+    .info-row { font-size:1rem; color:#555; margin-bottom:.5rem;}
+    .info-row b { color:#000; font-weight:600; }
+    .quota-bar-wrapper { width:100%; height:25px; margin-top:15px; position:relative; }
+    .quota-bar-bg { width:100%; height:100%; background:#e9ecef; border-radius:8px; position:relative; overflow:hidden; }
+    .quota-bar-fill { height:100%; border-radius:8px; transition:width .6s ease-in-out; position:absolute; left:0; top:0; }
+    .quota-bar-text { position:absolute; width:100%; text-align:center; top:50%; transform:translateY(-50%); color:#fff; font-size:14px; font-weight:bold; text-shadow:1px 1px 2px rgba(0,0,0,.5); }
+    .warning-badge, .danger-badge { font-size:.8rem; padding:.2em .6em; border-radius:.8em; color:#fff; font-weight:600; }
+    .warning-badge { background-color:#f7b731; }
+    .danger-badge { background-color:#e74c3c; }
+    .dashboard-title { font-size:2rem; font-weight:700; color:#1a2747; margin-bottom:1rem; }
+    .action-bar { margin-bottom:1.5rem; display:flex; gap:1rem; align-items:center; }
+    .modal-header { background:#1a2747; color:#fff; }
+    .btn-close-white { filter: invert(1) grayscale(100%) brightness(200%); }
+  </style>
+</head>
+<body><div id="debug-section" style="padding:10px; background:#f0f0f0; margin:10px 0;"><h3>匿名写入 cost_records 调试</h3><button id="debug-insert-btn" style="padding:6px 12px;">测试匿名插入</button><pre id="debug-result" style="background:#fff; padding:8px; margin-top:8px;"></pre></div>
+<div class="container py-4">
+<div id="main-view">
+<h1 class="dashboard-title">客户额度总览</h1>
+<div class="action-bar">
+<button class="btn btn-primary" id="addRecordBtn">添加消费记录</button>
+<button class="btn btn-outline-secondary" id="importBtn">导入数据</button>
+<button class="btn btn-outline-secondary" id="exportBtn">导出数据</button>
+<input accept=".json" id="importFile" style="display:none;" type="file"/>
+</div>
+<div class="dashboard" id="dashboard"></div>
+</div>
+<div id="detail-view" style="display:none;">
+<h1 class="dashboard-title" id="detail-title"></h1>
+<div class="action-bar">
+<button class="btn btn-secondary" id="backToDashboardBtn">返回总览</button>
+<button class="btn btn-outline-primary" id="exportClientBtn">导出JSON</button>
+<button class="btn btn-success" id="exportExcelBtn">导出Excel</button>
+</div>
+<div class="table-responsive">
+<table class="table table-striped table-hover align-middle">
+<thead class="table-dark">
+<tr><th>日期</th><th>分类</th><th>项目</th><th>供应商</th><th>数量</th><th>单价</th><th>总额</th><th>备注</th><th>操作</th></tr>
+</thead>
+<tbody id="clientCostTableBody"></tbody>
+</table>
+</div>
+</div>
+</div>
+<!-- 模态：添加/编辑记录 -->
+<div class="modal fade" id="recordModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title" id="recordModalTitle">添加记录</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body">
+<form id="recordForm">
+<input id="recordId" type="hidden"/>
+<div class="row g-3">
+<div class="col-md-6"><label class="form-label">日期</label><input class="form-control" id="recordDate" required="" type="date"/></div>
+<div class="col-md-6"><label class="form-label">客户</label><select class="form-select" id="recordClient" required=""></select></div>
+<div class="col-md-6"><label class="form-label">分类</label><select class="form-select" id="recordCategory" required=""></select></div>
+<div class="col-md-6"><label class="form-label">项目</label><input class="form-control" id="recordItemName" placeholder="例如：第一季度补充剂" required="" type="text"/></div>
+<div class="col-md-12"><label class="form-label">供应商</label><input class="form-control" id="recordSupplier" type="text"/></div>
+<div class="col-md-4"><label class="form-label">数量</label><input class="form-control" id="recordQuantity" min="0" required="" type="number" value="1"/></div>
+<div class="col-md-4"><label class="form-label">单价</label><input class="form-control" id="recordUnitPrice" min="0" required="" step="0.01" type="number"/></div>
+<div class="col-md-4"><label class="form-label">总额</label><input class="form-control" id="recordTotalAmount" min="0" readonly="" required="" step="0.01" type="number"/></div>
+<div class="col-md-12"><label class="form-label">备注</label><textarea class="form-control" id="recordNotes" rows="2"></textarea></div>
+</div>
+</form>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-primary" id="saveRecordBtn" type="button">保存</button></div>
+</div></div></div>
+<!-- 模态：新增客户 -->
+<div class="modal fade" id="addClientModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">新增客户</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body">
+<div class="mb-3"><label class="form-label">客户姓名</label><input class="form-control" id="newClientName" placeholder="例如：张三" type="text"/></div>
+<div class="mb-3"><label class="form-label">客户类型</label><select class="form-select" id="newClientType"><option value="基础版">基础版 (额度: 40,000)</option><option value="Pro版">Pro版 (额度: 120,000)</option><option value="特殊">特殊(手动输入额度)</option></select></div>
+<div class="mb-3" id="manualQuotaWrapper" style="display:none;"><label class="form-label">总额度</label><input class="form-control" id="newClientQuota" min="0" placeholder="例如：150000" type="number"/></div>
+</div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-primary" id="saveNewClientBtn" type="button">保存客户</button></div>
+</div></div></div>
+<!-- 删除确认 -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+<div class="modal-header"><h5 class="modal-title">确认删除</h5><button class="btn-close btn-close-white" data-bs-dismiss="modal" type="button"></button></div>
+<div class="modal-body"><p>您确定要删除这条记录吗？此操作不可撤销。</p></div>
+<div class="modal-footer"><button class="btn btn-secondary" data-bs-dismiss="modal" type="button">取消</button><button class="btn btn-danger" id="confirmDeleteBtn" type="button">确认删除</button></div>
+</div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.getElementById("debug-insert-btn").addEventListener("click", async () => {
+  const resultEl = document.getElementById("debug-result");
+  resultEl.textContent = "正在尝试插入测试数据...";
+  try {
+    const insertData = {date: new Date().toISOString().split("T")[0],
+      category: "测试类别",
+      item_name: "测试项目",
+      supplier: "测试供应商",
+      quantity: 1,
+      unit_price: 100,
+      total_amount: 100,
+      notes: "测试插入",
+      created_at: new Date().toISOString()
+    };
+    const { data, error } = await supabaseClient
+      .from("cost_records")
+      .insert([insertData]);
+    if (error) {
+      resultEl.textContent = "❌ 插入失败:\n" + JSON.stringify(error, null, 2);
+    } else {
+      resultEl.textContent = "✅ 插入成功:\n" + JSON.stringify(data, null, 2);
+    }
+  } catch (err) {
+    resultEl.textContent = "❌ JS 异常:\n" + err.message;
+  }
+});
+</script>
+</body>
+</html>
